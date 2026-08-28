@@ -1,0 +1,119 @@
+ /*
+  STEP 3: LINE FOLLOWER (final sketch) - 3 sensors
+  Run this AFTER motor test + calibration both work.
+
+  Wiring: same motor pins as 1_motor_test.ino,
+  3 analog sensor pins A0-A2 (left, center, right).
+*/
+
+// ---------- Motor pins ----------
+const int ENA = 5;
+const int IN1 = 6;
+const int IN2 = 7;
+const int ENB = 10;
+const int IN3 = 8;
+const int IN4 = 9;
+
+// ---------- Sensor pins (left to right) ----------
+const int NUM_SENSORS = 3;
+const int sensorPins[NUM_SENSORS] = {A0, A1, A2};
+
+// ---------- Tuning values ----------
+// NOTE: values below tuned for a 9V supply. At 9V, motors spin
+// faster for the same PWM value than they did at 6V, so speeds
+// are lowered a bit here to keep the robot controllable.
+int THRESHOLD = 500;      // tumhare calibration ke hisaab se sahi hai
+int BASE_SPEED = 150;      // lowered from 200 -> 9V already adds speed
+int MIN_SPEED = 70;        // lowered from 90 -> less PWM needed to move at 9V
+float KP = 35.0;           // slightly increased -> sharper correction for faster motion
+int MAX_SPEED = 255;
+
+int weights[NUM_SENSORS] = {-1, 0, 1};
+
+void setup() {
+  pinMode(ENA, OUTPUT);
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+  pinMode(ENB, OUTPUT);
+  pinMode(IN3, OUTPUT);
+  pinMode(IN4, OUTPUT);
+  Serial.begin(9600);
+}
+
+void setMotors(int leftSpeed, int rightSpeed) {
+  leftSpeed = constrain(leftSpeed, -MAX_SPEED, MAX_SPEED);
+  rightSpeed = constrain(rightSpeed, -MAX_SPEED, MAX_SPEED);
+
+  // Apply a minimum PWM floor so motors don't stall at low speeds
+  if (leftSpeed > 0 && leftSpeed < MIN_SPEED) leftSpeed = MIN_SPEED;
+  if (leftSpeed < 0 && leftSpeed > -MIN_SPEED) leftSpeed = -MIN_SPEED;
+  if (rightSpeed > 0 && rightSpeed < MIN_SPEED) rightSpeed = MIN_SPEED;
+  if (rightSpeed < 0 && rightSpeed > -MIN_SPEED) rightSpeed = -MIN_SPEED;
+
+  if (leftSpeed >= 0) {
+    digitalWrite(IN1, HIGH);
+    digitalWrite(IN2, LOW);
+  } else {
+    digitalWrite(IN1, LOW);
+    digitalWrite(IN2, HIGH);
+  }
+  analogWrite(ENA, abs(leftSpeed));
+
+  if (rightSpeed >= 0) {
+    digitalWrite(IN3, HIGH);
+    digitalWrite(IN4, LOW);
+  } else {
+    digitalWrite(IN3, LOW);
+    digitalWrite(IN4, HIGH);
+  }
+  analogWrite(ENB, abs(rightSpeed));
+}
+
+float getLinePosition() {
+  long weightedSum = 0;
+  int activeCount = 0;
+
+  for (int i = 0; i < NUM_SENSORS; i++) {
+    int value = analogRead(sensorPins[i]);
+    if (value > THRESHOLD) {
+      weightedSum += weights[i];
+      activeCount++;
+    }
+  }
+
+  if (activeCount == 0) {
+    return 999;
+  }
+  return (float)weightedSum / activeCount;
+}
+
+int lastDirection = 0;
+
+void loop() {
+  float position = getLinePosition();
+
+  if (position == 999) {
+    if (lastDirection < 0) {
+      setMotors(-120, 120);
+    } else {
+      setMotors(120, -120);
+    }
+    return;
+  }
+
+  if (position < 0) lastDirection = -1;
+  else if (position > 0) lastDirection = 1;
+
+  float correction = KP * position;
+  int leftSpeed = BASE_SPEED + correction;
+  int rightSpeed = BASE_SPEED - correction;
+
+  setMotors(leftSpeed, rightSpeed);
+
+  Serial.print("pos: ");
+  Serial.print(position);
+  Serial.print("  L: ");
+  Serial.print(leftSpeed);
+  Serial.print("  R: ");
+  Serial.println(rightSpeed);
+}
